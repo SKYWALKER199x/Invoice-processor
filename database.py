@@ -22,19 +22,20 @@ conn.close()
 def insert_data(customer_name, invoice_id, invoice_date, organization):
     conn = sqlite3.connect("invoices.db")
     cursor = conn.cursor()
-
-    # Check if invoice ID already exists
+    
     cursor.execute("SELECT * FROM invoices WHERE invoice_id = ?", (invoice_id,))
     existing = cursor.fetchone()
 
     if existing:
-        QMessageBox.warning(None, "Duplicate", "This invoice ID already exists in the database.")
+        return False  # already exists
     else:
-        cursor.execute("INSERT INTO invoices (customer_name, invoice_id, invoice_date, organization) VALUES (?, ?, ?, ?)", (customer_name, invoice_id, invoice_date, organization))
+        cursor.execute(
+            "INSERT INTO invoices (customer_name, invoice_id, invoice_date, organization) VALUES (?, ?, ?, ?)",
+            (customer_name, invoice_id, invoice_date, organization)
+        )
         conn.commit()
-        QMessageBox.information(None, "Success", "Invoice saved successfully.")
+        return True
 
-    conn.close()
 
 
 def fetch_all_data():

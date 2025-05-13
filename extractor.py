@@ -20,7 +20,25 @@ def extract_from_image(file_path):
         image_data = img_file.read()
 
     response = model.generate_content([
-        "Extract ONLY the following from this invoice: Customer Name, Invoice ID, Invoice Date, Organization. Format it clearly like:\nCustomer Name: ...\nInvoice ID: ...\nInvoice Date: ...\nOrganization: ...",
+        """Extract the following from this invoice:
+1. Customer Name
+2. Invoice ID
+3. Invoice Date
+4. Organization
+5. Total Amount (as a number)
+6. List of items with their quantities and prices (in format: Item Name | Quantity | Price)
+
+Format the output like:
+Customer Name: ...
+Invoice ID: ...
+Invoice Date: ...
+Organization: ...
+Total Amount: ...
+
+Items:
+- Item Name 1 | Quantity | Price
+- Item Name 2 | Quantity | Price
+...""",
         {"mime_type": "image/jpeg", "data": image_data}
     ])
 
@@ -31,41 +49,78 @@ def extract_from_pdf(file_path):
         pdf_data = pdf_file.read()
 
     response = model.generate_content([
-        "Extract ONLY the following from this invoice PDF: Customer Name, Invoice ID, Invoice Date, Organization. Format it clearly like:\nCustomer Name: ...\nInvoice ID: ...\nInvoice Date: ...\nOrganization: ...",
+        """Extract the following from this invoice PDF:
+1. Customer Name
+2. Invoice ID
+3. Invoice Date
+4. Organization
+5. Total Amount (as a number)
+6. List of items with their quantities and prices (in format: Item Name | Quantity | Price)
+
+Format the output like:
+Customer Name: ...
+Invoice ID: ...
+Invoice Date: ...
+Organization: ...
+Total Amount: ...
+
+Items:
+- Item Name 1 | Quantity | Price
+- Item Name 2 | Quantity | Price
+...""",
         {"mime_type": "application/pdf", "data": pdf_data}
     ])
 
     return parse_invoice_data(response.text)
 
 def parse_invoice_data(text):
-    customer_name = invoice_id = invoice_date = organization = ""
-    items = []
-
-    for line in text.split("\n"):
-        line = line.strip()
-        if "Customer Name" in line:
-            customer_name = line.split(":", 1)[1].strip()
-        elif "Invoice ID" in line:
-            invoice_id = line.split(":", 1)[1].strip()
-        elif "Invoice Date" in line:
-            invoice_date = line.split(":", 1)[1].strip()
-        elif "Organization" in line:
-            organization = line.split(":", 1)[1].strip()
-        else:
-            # Basic item parser (e.g., "Item Name   2   $20")
-            match = re.match(r"(.+?)\s+(\d+)\s+\\$?\\d+", line)
-            if match:
-                item_name = match.group(1).strip()
-                quantity = match.group(2).strip()
-                items.append((item_name, quantity))
-
-    return {
-        "customer_name": customer_name,
-        "invoice_id": invoice_id,
-        "invoice_date": invoice_date,
-        "organization": organization,
-        "items": items  # New!
+    data = {
+        "customer_name": "",
+        "invoice_id": "",
+        "invoice_date": "",
+        "organization": "",
+        "total_amount": 0.0,
+        "items": []
     }
 
+    lines = text.split("\n")
+    items_section = False
 
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
 
+        if line.lower().startswith("items:"):
+            items_section = True
+            continue
+
+        if items_section:
+            if line.startswith("-"):
+                parts = [p.strip() for p in line[1:].split("|")]
+                if len(parts) >= 3:
+                    try:
+                        item_data = {
+                            "name": parts[0],
+                            "quantity": int(parts[1]),
+                            "price": float(parts[2].replace(",", "").replace("$", ""))  # Ensure no $ signs
+                        }
+                        data["items"].append(item_data)
+                    except (ValueError, IndexError):
+                        continue    
+        else:
+            if "Customer Name:" in line:
+                data["customer_name"] = line.split(":", 1)[1].strip()
+            elif "Invoice ID:" in line:
+                data["invoice_id"] = line.split(":", 1)[1].strip()
+            elif "Invoice Date:" in line:
+                data["invoice_date"] = line.split(":", 1)[1].strip()
+            elif "Organization:" in line:
+                data["organization"] = line.split(":", 1)[1].strip()
+            elif "Total Amount:" in line:
+                try:
+                    data["total_amount"] = float(line.split(":", 1)[1].strip().replace(",", ""))
+                except (ValueError, IndexError):
+                    pass
+
+    return data
